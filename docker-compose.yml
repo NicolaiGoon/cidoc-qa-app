@@ -1,0 +1,80 @@
+version: '3.8'
+name: "cidoc-qa-app"
+
+services:
+
+  graphdb:
+    container_name: graphdb
+    image: ontotext/graphdb:10.1.1
+    restart: always
+    networks:
+      - cidoc-qa
+    ports:
+      - 7200:7200
+    volumes:
+      - ${GRAPH_DB_EXISTING_DATA_PATH}:/opt/graphdb/home/data/repositories/cidoc-crm
+      - cidoc-qa-graph-db:/opt/graphdb/home/data
+
+  elastic-search:
+    container_name: elastic-search
+    image: elasticsearch:6.8.0
+    restart: always
+    networks:
+      - cidoc-qa
+    ports:
+      - 9200:9200
+    volumes:
+      - ${ELASTIC_SEARCH_EXISTING_DATA_PATH}:/usr/share/elasticsearch/data/nodes
+      - cidoc-qa-elastic:/usr/share/elasticsearch/data
+
+  elas4rdf-search:
+    container_name: cidoc-qa-elas4rdf-search
+    image: nicolaigoon/elas4rdf-search:latest
+    restart: always
+    networks:
+      - cidoc-qa
+    ports:
+      - 8080:8080
+    depends_on:
+      - elastic-search
+    environment:
+      - "elastic.address=elastic-search"
+      - "elastic.port=9200"
+
+  # the qa service url is hardcoded to the cidoc-qa-web image due to limitations of react
+  cidoc-qa-web:
+    container_name: cidoc-qa-web
+    image: nicolaigoon/cidoc-qa-web:1.1.1
+    restart: unless-stopped
+    networks:
+      - cidoc-qa
+    ports:
+      - 80:3000
+    depends_on:
+      - elas4rdf-search
+      - elastic-search
+
+  cidoc-qa-service:
+    container_name: cidoc-qa-service
+    image: nicolaigoon/cidoc-qa-service:1.0.0
+    networks:
+      - cidoc-qa
+    ports:
+      - 5000:5000
+    depends_on:
+      - elas4rdf-search
+      - elastic-search
+    volumes:
+      - ${CIDOC_QA_SERVICE_EXISTING_MODELS_PATH}:/deploy/ae_models
+    environment:
+      - ELAS4RDF_URL=http://elas4rdf-search:8080
+      - SPARQL_URL=http://graphdb:7200
+      - GRAPH_DB_REPO=cidoc-crm
+
+volumes:
+  cidoc-qa-elastic:
+  cidoc-qa-graph-db:
+
+
+networks:
+  cidoc-qa:
